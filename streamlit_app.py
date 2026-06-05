@@ -5,103 +5,99 @@ from PIL import Image
 import os
 import gdown
 
-# --- PATCH BYPASS ERROR KERAS 3 ---
-# Memaksa Keras untuk mengabaikan parameter 'quantization_config' yang bikin error
-def apply_keras_patch():
-    layer_classes = [
-        tf.keras.layers.Dense, 
-        tf.keras.layers.Conv2D, 
-        tf.keras.layers.MaxPooling2D, 
-        tf.keras.layers.Flatten, 
-        tf.keras.layers.Dropout
-    ]
-    for layer_cls in layer_classes:
-        try:
-            orig_from_config = layer_cls.from_config
-            def make_patched_from_config(orig_func):
-                def patched(cls, config):
-                    config.pop('quantization_config', None)
-                    return orig_func(config)
-                return classmethod(patched)
-            layer_cls.from_config = make_patched_from_config(orig_from_config)
-        except Exception:
-            pass
+# ======================
+# LOAD MODEL
+# ======================
 
-apply_keras_patch()
-# ----------------------------------
-
-# 1. Konfigurasi Halaman
-st.set_page_config(page_title="Prediksi Retak Beton", layout="centered", page_icon="🏗️")
-
-# 2. Definisikan Kelas (Label)
-class_names = ['Retak', 'Tidak_Retak']
-
-# 3. Fungsi untuk Memuat Model
 @st.cache_resource
 def load_model():
-    model_path = 'model_crack_beton.h5'
-    
+
+    model_path = "my_image_classifier_model.h5"
+
     if not os.path.exists(model_path):
-        file_id = '1yaUHZ5p6aSxFuRYduiQKMwWpIJwf-if3' 
-        try:
-            gdown.download(id=file_id, output=model_path, quiet=False)
-        except Exception as e:
-            st.error(f"Gagal mengunduh model dari GDrive: {e}")
-            return None
-        
-    try:
-        model = tf.keras.models.load_model(model_path, compile=False)
-        return model
-    except Exception as e:
-        st.error(f"Gagal memuat model. Detail: {e}")
-        return None
 
-# 4. Fungsi untuk Memprediksi Gambar
-def prediksi_gambar(image_pil, model):
-    img_height = 150
-    img_width = 150
+        file_id = "1DEgQPFAyr-iUYbRDvbOm6e4Sm2vGR0lD"
 
-    img_resized = image_pil.resize((img_width, img_height))
-    img_array = np.array(img_resized, dtype=np.float32)
-    img_array = np.expand_dims(img_array, axis=0)
+        gdown.download(
+            f"https://drive.google.com/uc?id={file_id}",
+            model_path,
+            quiet=False
+        )
 
-    predictions = model.predict(img_array)
-    score = predictions[0]
+    model = tf.keras.models.load_model(
+        model_path,
+        compile=False
+    )
 
-    if len(class_names) == 2 and predictions.shape[-1] == 1:
-        predicted_class_idx = 1 if score[0] >= 0.5 else 0
-        konfidensi = score[0] if predicted_class_idx == 1 else 1 - score[0]
-        konfidensi = konfidensi * 100
-    else:
-        predicted_class_idx = np.argmax(score)
-        konfidensi = np.max(score) * 100
+    return model
 
-    hasil_prediksi = class_names[predicted_class_idx]
-    return hasil_prediksi, konfidensi
-# 5. UI Streamlit
-st.title("🏗️ Deteksi Retak pada Beton")
-st.write("Unggah foto permukaan beton untuk mendeteksi apakah terdapat retakan atau tidak menggunakan model Artificial Intelligence.")
+model = load_model()
 
-with st.spinner("Sedang menyiapkan model AI... (Memakan waktu sesaat untuk unduh awal)"):
-    model_beton = load_model()
+# ======================
+# LABEL KELAS
+# ======================
 
-if model_beton is None:
-    st.stop()
+class_names = [
+    "Covid",
+    "Normal",
+    "Viral Pneumonia"
+]
 
-# 6. Fitur Upload Gambar
-uploaded_file = st.file_uploader("Pilih gambar beton Anda...", type=["jpg", "jpeg", "png"])
+# ======================
+# UI
+# ======================
+
+st.title("☠️ Deteksi Covid dari X-Ray")
+
+uploaded_file = st.file_uploader(
+    "Upload Gambar X-Ray",
+    type=["jpg", "jpeg", "png"]
+)
 
 if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert('RGB')
-    st.image(image, caption="Gambar yang Anda unggah", use_column_width=True)
-    
-    if st.button("Deteksi Gambar"):
-        with st.spinner("Sedang menganalisis gambar..."):
-            hasil, konfidensi = prediksi_gambar(image, model_beton)
-        
-        if hasil == 'Retak':
-            st.error(f"⚠️ **Hasil Prediksi:** Beton Terdeteksi **{hasil}**")
-            st.write(f"**Tingkat Keyakinan Model:** {konfidensi:.2f}%")
-        else:
-            st.success(f"✅ **Hasil Prediksi:** Beton Terdeteksi **{hasil.replace('_', ' ')}**")
-            st.write(f"**Tingkat Keyakinan Model:** {konfidensi:.2f}%")
+
+    image = Image.open(uploaded_file).convert("RGB")
+
+    st.image(
+        image,
+        caption="Gambar yang Diupload",
+        use_container_width=True
+    )
+
+    if st.button("Prediksi"):
+
+        img = image.resize((224, 224))
+
+        img_array = np.array(img)
+
+        img_array = img_array.astype(np.float32)
+
+        img_array = img_array / 255.0
+
+        img_array = np.expand_dims(
+            img_array,
+            axis=0
+        )
+
+        prediction = model.predict(img_array)
+
+        # DEBUG
+        st.subheader("DEBUG MODEL")
+
+        st.write("Prediction Mentah:")
+        st.write(prediction)
+
+        st.write("Shape:")
+        st.write(prediction.shape)
+
+        predicted_class = np.argmax(prediction)
+
+        confidence = np.max(prediction) * 100
+
+        st.success(
+            f"Hasil Prediksi: {class_names[predicted_class]}"
+        )
+
+        st.write(
+            f"Confidence: {confidence:.2f}%"
+        )
