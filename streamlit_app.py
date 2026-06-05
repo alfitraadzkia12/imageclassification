@@ -39,8 +39,8 @@ model = load_model()
 # ======================
 
 class_names = [
-    "Covid",
     "Normal",
+    "Covid",
     "Viral Pneumonia"
 ]
 
