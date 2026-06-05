@@ -31,6 +31,7 @@ def load_model():
 
     return model
 
+
 model = load_model()
 
 # ======================
@@ -44,10 +45,24 @@ class_names = [
 ]
 
 # ======================
-# UI
+# HALAMAN
 # ======================
 
-st.title("☠️ Deteksi Covid dari X-Ray")
+st.set_page_config(
+    page_title="Deteksi Covid dari X-Ray",
+    page_icon="🩻",
+    layout="centered"
+)
+
+st.title("🩻 Deteksi Covid dari X-Ray")
+
+st.write(
+    "Upload gambar X-Ray paru-paru untuk mendeteksi Covid, Normal, atau Viral Pneumonia."
+)
+
+# ======================
+# UPLOAD FILE
+# ======================
 
 uploaded_file = st.file_uploader(
     "Upload Gambar X-Ray",
@@ -66,6 +81,10 @@ if uploaded_file is not None:
 
     if st.button("Prediksi"):
 
+        # ======================
+        # PREPROCESSING
+        # ======================
+
         img = image.resize((224, 224))
 
         img_array = np.array(img)
@@ -79,20 +98,43 @@ if uploaded_file is not None:
             axis=0
         )
 
+        # ======================
+        # PREDIKSI
+        # ======================
+
         prediction = model.predict(img_array)
 
-        # DEBUG
-        st.subheader("DEBUG MODEL")
+        # Ubah logits menjadi probabilitas
+        probabilities = tf.nn.softmax(
+            prediction[0]
+        ).numpy()
 
-        st.write("Prediction Mentah:")
+        predicted_class = np.argmax(
+            probabilities
+        )
+
+        confidence = float(
+            probabilities[predicted_class] * 100
+        )
+
+        # ======================
+        # DEBUG
+        # ======================
+
+        st.subheader("Debug Model")
+
+        st.write("Output Mentah:")
         st.write(prediction)
+
+        st.write("Probabilitas:")
+        st.write(probabilities)
 
         st.write("Shape:")
         st.write(prediction.shape)
 
-        predicted_class = np.argmax(prediction)
-
-        confidence = np.max(prediction) * 100
+        # ======================
+        # HASIL
+        # ======================
 
         st.success(
             f"Hasil Prediksi: {class_names[predicted_class]}"
