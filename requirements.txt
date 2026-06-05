@@ -1,7 +1,2 @@
 streamlit
-keras
-tensorflow
-numpy
 pillow
-gdown
-h5py
