@@ -5,136 +5,103 @@ from PIL import Image
 import os
 import gdown
 
-# =========================
-# KONFIGURASI HALAMAN
-# =========================
-st.set_page_config(
-    page_title="Deteksi Covid dari X-Ray",
-    page_icon="🩻",
-    layout="centered"
-)
+# --- PATCH BYPASS ERROR KERAS 3 ---
+# Memaksa Keras untuk mengabaikan parameter 'quantization_config' yang bikin error
+def apply_keras_patch():
+    layer_classes = [
+        tf.keras.layers.Dense, 
+        tf.keras.layers.Conv2D, 
+        tf.keras.layers.MaxPooling2D, 
+        tf.keras.layers.Flatten, 
+        tf.keras.layers.Dropout
+    ]
+    for layer_cls in layer_classes:
+        try:
+            orig_from_config = layer_cls.from_config
+            def make_patched_from_config(orig_func):
+                def patched(cls, config):
+                    config.pop('quantization_config', None)
+                    return orig_func(config)
+                return classmethod(patched)
+            layer_cls.from_config = make_patched_from_config(orig_from_config)
+        except Exception:
+            pass
 
-# =========================
-# LABEL KELAS
-# =========================
-class_names = [
-    "Covid",
-    "Normal",
-    "Viral Pneumonia"
-]
+apply_keras_patch()
+# ----------------------------------
 
-# =========================
-# LOAD MODEL
-# =========================
+# 1. Konfigurasi Halaman
+st.set_page_config(page_title="Prediksi Retak Beton", layout="centered", page_icon="🏗️")
+
+# 2. Definisikan Kelas (Label)
+class_names = ['Retak', 'Tidak_Retak']
+
+# 3. Fungsi untuk Memuat Model
 @st.cache_resource
 def load_model():
-
-    model_path = "my_image_classifier_model.h5"
-
+    model_path = 'model_crack_beton.h5'
+    
     if not os.path.exists(model_path):
-
-        file_id = "1DEgQPFAyr-iUYbRDvbOm6e4Sm2vGR0lD"
-
+        file_id = '1yaUHZ5p6aSxFuRYduiQKMwWpIJwf-if3' 
         try:
-            gdown.download(
-                f"https://drive.google.com/uc?id={file_id}",
-                model_path,
-                quiet=False
-            )
-
+            gdown.download(id=file_id, output=model_path, quiet=False)
         except Exception as e:
-            st.error(f"Gagal download model: {e}")
+            st.error(f"Gagal mengunduh model dari GDrive: {e}")
             return None
-
+        
     try:
-        model = tf.keras.models.load_model(
-            model_path,
-            compile=False
-        )
+        model = tf.keras.models.load_model(model_path, compile=False)
         return model
-
     except Exception as e:
-        st.error(f"Gagal load model: {e}")
+        st.error(f"Gagal memuat model. Detail: {e}")
         return None
 
-# =========================
-# PREDIKSI
-# =========================
-def prediksi_gambar(image, model):
+# 4. Fungsi untuk Memprediksi Gambar
+def prediksi_gambar(image_pil, model):
+    img_height = 150
+    img_width = 150
 
-    image = image.convert("RGB")
+    img_resized = image_pil.resize((img_width, img_height))
+    img_array = np.array(img_resized, dtype=np.float32)
+    img_array = np.expand_dims(img_array, axis=0)
 
-    img = image.resize((224, 224))
+    predictions = model.predict(img_array)
+    score = predictions[0]
 
-    img_array = np.array(img)
+    if len(class_names) == 2 and predictions.shape[-1] == 1:
+        predicted_class_idx = 1 if score[0] >= 0.5 else 0
+        konfidensi = score[0] if predicted_class_idx == 1 else 1 - score[0]
+        konfidensi = konfidensi * 100
+    else:
+        predicted_class_idx = np.argmax(score)
+        konfidensi = np.max(score) * 100
 
-    img_array = img_array.astype(np.float32)
+    hasil_prediksi = class_names[predicted_class_idx]
+    return hasil_prediksi, konfidensi
+# 5. UI Streamlit
+st.title("🏗️ Deteksi Retak pada Beton")
+st.write("Unggah foto permukaan beton untuk mendeteksi apakah terdapat retakan atau tidak menggunakan model Artificial Intelligence.")
 
-    img_array = img_array / 255.0
+with st.spinner("Sedang menyiapkan model AI... (Memakan waktu sesaat untuk unduh awal)"):
+    model_beton = load_model()
 
-    img_array = np.expand_dims(
-        img_array,
-        axis=0
-    )
-
-    prediction = model.predict(img_array)
-
-    predicted_class = np.argmax(prediction)
-
-    confidence = float(
-        np.max(prediction) * 100
-    )
-
-    return (
-        class_names[predicted_class],
-        confidence
-    )
-
-# =========================
-# UI
-# =========================
-st.title("🩻 Deteksi Covid dari X-Ray")
-
-st.write(
-    "Upload gambar X-Ray paru-paru untuk mendeteksi Covid, Normal, atau Viral Pneumonia."
-)
-
-with st.spinner("Menyiapkan model AI..."):
-    model = load_model()
-
-if model is None:
+if model_beton is None:
     st.stop()
 
-uploaded_file = st.file_uploader(
-    "Upload Gambar X-Ray",
-    type=["jpg", "jpeg", "png"]
-)
+# 6. Fitur Upload Gambar
+uploaded_file = st.file_uploader("Pilih gambar beton Anda...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-
-    image = Image.open(uploaded_file)
-
-    st.image(
-        image,
-        caption="Gambar yang Diupload",
-        use_container_width=True
-    )
-
-    if st.button("Prediksi"):
-
-        with st.spinner(
-            "Sedang menganalisis gambar..."
-        ):
-
-            hasil, confidence = prediksi_gambar(
-                image,
-                model
-            )
-
-        st.success(
-            f"Hasil Prediksi: {hasil}"
-        )
-
-        st.write(
-            f"Confidence: {confidence:.2f}%"
-        )
+    image = Image.open(uploaded_file).convert('RGB')
+    st.image(image, caption="Gambar yang Anda unggah", use_column_width=True)
+    
+    if st.button("Deteksi Gambar"):
+        with st.spinner("Sedang menganalisis gambar..."):
+            hasil, konfidensi = prediksi_gambar(image, model_beton)
+        
+        if hasil == 'Retak':
+            st.error(f"⚠️ **Hasil Prediksi:** Beton Terdeteksi **{hasil}**")
+            st.write(f"**Tingkat Keyakinan Model:** {konfidensi:.2f}%")
+        else:
+            st.success(f"✅ **Hasil Prediksi:** Beton Terdeteksi **{hasil.replace('_', ' ')}**")
+            st.write(f"**Tingkat Keyakinan Model:** {konfidensi:.2f}%")
