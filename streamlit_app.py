@@ -5,27 +5,10 @@ from PIL import Image
 import os
 import gdown
 
-# =========================
-# KONFIGURASI HALAMAN
-# =========================
-st.set_page_config(
-    page_title="Deteksi Covid dari X-Ray",
-    page_icon="🩻",
-    layout="centered"
-)
-
-# =========================
-# LABEL KELAS
-# =========================
-class_names = [
-    "Covid",
-    "Normal",
-    "Viral Pneumonia"
-]
-
-# =========================
+# ======================
 # LOAD MODEL
-# =========================
+# ======================
+
 @st.cache_resource
 def load_model():
 
@@ -35,75 +18,36 @@ def load_model():
 
         file_id = "1DEgQPFAyr-iUYbRDvbOm6e4Sm2vGR0lD"
 
-        try:
-            gdown.download(
-                f"https://drive.google.com/uc?id={file_id}",
-                model_path,
-                quiet=False
-            )
-
-        except Exception as e:
-            st.error(f"Gagal download model: {e}")
-            return None
-
-    try:
-        model = tf.keras.models.load_model(
+        gdown.download(
+            f"https://drive.google.com/uc?id={file_id}",
             model_path,
-            compile=False
+            quiet=False
         )
-        return model
 
-    except Exception as e:
-        st.error(f"Gagal load model: {e}")
-        return None
-
-# =========================
-# PREDIKSI
-# =========================
-def prediksi_gambar(image, model):
-
-    image = image.convert("RGB")
-
-    img = image.resize((224, 224))
-
-    img_array = np.array(img)
-
-    img_array = img_array.astype(np.float32)
-
-    img_array = img_array / 255.0
-
-    img_array = np.expand_dims(
-        img_array,
-        axis=0
+    model = tf.keras.models.load_model(
+        model_path,
+        compile=False
     )
 
-    prediction = model.predict(img_array)
+    return model
 
-    predicted_class = np.argmax(prediction)
+model = load_model()
 
-    confidence = float(
-        np.max(prediction) * 100
-    )
+# ======================
+# LABEL KELAS
+# ======================
 
-    return (
-        class_names[predicted_class],
-        confidence
-    )
+class_names = [
+    "Covid",
+    "Normal",
+    "Viral Pneumonia"
+]
 
-# =========================
+# ======================
 # UI
-# =========================
-st.title("🩻 Deteksi Covid dari X-Ray")
+# ======================
 
-st.write(
-    "Upload gambar X-Ray paru-paru untuk mendeteksi Covid, Normal, atau Viral Pneumonia."
-)
-
-with st.spinner("Menyiapkan model AI..."):
-    model = load_model()
-
-if model is None:
-    st.stop()
+st.title("☠️ Deteksi Covid dari X-Ray")
 
 uploaded_file = st.file_uploader(
     "Upload Gambar X-Ray",
@@ -112,7 +56,7 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    image = Image.open(uploaded_file)
+    image = Image.open(uploaded_file).convert("RGB")
 
     st.image(
         image,
@@ -122,17 +66,36 @@ if uploaded_file is not None:
 
     if st.button("Prediksi"):
 
-        with st.spinner(
-            "Sedang menganalisis gambar..."
-        ):
+        img = image.resize((224, 224))
 
-            hasil, confidence = prediksi_gambar(
-                image,
-                model
-            )
+        img_array = np.array(img)
+
+        img_array = img_array.astype(np.float32)
+
+        img_array = img_array / 255.0
+
+        img_array = np.expand_dims(
+            img_array,
+            axis=0
+        )
+
+        prediction = model.predict(img_array)
+
+        # DEBUG
+        st.subheader("DEBUG MODEL")
+
+        st.write("Prediction Mentah:")
+        st.write(prediction)
+
+        st.write("Shape:")
+        st.write(prediction.shape)
+
+        predicted_class = np.argmax(prediction)
+
+        confidence = np.max(prediction) * 100
 
         st.success(
-            f"Hasil Prediksi: {hasil}"
+            f"Hasil Prediksi: {class_names[predicted_class]}"
         )
 
         st.write(
