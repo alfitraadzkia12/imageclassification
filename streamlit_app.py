@@ -2,52 +2,33 @@ import streamlit as st
 import tensorflow as tf
 import numpy as np
 from PIL import Image
-import os
 import gdown
+import os
 
-# ======================
-# LOAD MODEL
-# ======================
+# Download model dari Google Drive jika belum ada
+file_id = "1AABBF6Zh23ONuTxfw2baOPjmnubGZbhu"
 
-@st.cache_resource
-def load_model():
-
-    model_path = "my_image_classifier_model.h5"
-
-    if not os.path.exists(model_path):
-
-        file_id = "1DEgQPFAyr-iUYbRDvbOm6e4Sm2vGR0lD"
-
-        gdown.download(
-            f"https://drive.google.com/uc?id={file_id}",
-            model_path,
-            quiet=False
-        )
-
-    model = tf.keras.models.load_model(
-        model_path,
-        compile=False
+if not os.path.exists("my_image_classifier_model.h5"):
+    gdown.download(
+        f"https://drive.google.com/uc?id={file_id}",
+        "my_image_classifier_model.h5",
+        quiet=False
     )
 
-    return model
+# Load model
+model = tf.keras.models.load_model(
+    "my_image_classifier_model.h5"
+)
 
-model = load_model()
-
-# ======================
-# LABEL KELAS
-# ======================
-
+# Nama kelas
 class_names = [
     "Covid",
     "Normal",
     "Viral Pneumonia"
 ]
 
-# ======================
-# UI
-# ======================
-
-st.title("☠️ Deteksi Covid dari X-Ray")
+# Judul aplikasi
+st.title("Deteksi Covid dari X-Ray")
 
 uploaded_file = st.file_uploader(
     "Upload Gambar X-Ray",
@@ -56,7 +37,7 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    image = Image.open(uploaded_file).convert("RGB")
+    image = Image.open(uploaded_file)
 
     st.image(
         image,
@@ -64,40 +45,21 @@ if uploaded_file is not None:
         use_container_width=True
     )
 
-    if st.button("Prediksi"):
+    # Preprocessing
+    img = image.resize((224, 224))
+    img_array = np.array(img)
 
-        img = image.resize((224, 224))
+    if len(img_array.shape) == 2:
+        img_array = np.stack((img_array,) * 3, axis=-1)
 
-        img_array = np.array(img)
+    img_array = img_array / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
 
-        img_array = img_array.astype(np.float32)
+    # Prediksi
+    prediction = model.predict(img_array)
 
-        img_array = img_array / 255.0
+    score = np.argmax(prediction)
 
-        img_array = np.expand_dims(
-            img_array,
-            axis=0
-        )
-
-        prediction = model.predict(img_array)
-
-        # DEBUG
-        st.subheader("DEBUG MODEL")
-
-        st.write("Prediction Mentah:")
-        st.write(prediction)
-
-        st.write("Shape:")
-        st.write(prediction.shape)
-
-        predicted_class = np.argmax(prediction)
-
-        confidence = np.max(prediction) * 100
-
-        st.success(
-            f"Hasil Prediksi: {class_names[predicted_class]}"
-        )
-
-        st.write(
-            f"Confidence: {confidence:.2f}%"
-        )
+    st.success(
+        f"Hasil Prediksi: {class_names[score]}"
+    )
