@@ -4,53 +4,47 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 from PIL import Image
-import gdown
 import os
+import gdown
 
-# =========================
-# PAGE CONFIG
-# =========================
+# ==================================
+# CONFIG
+# ==================================
 st.set_page_config(
     page_title="Deteksi Covid X-Ray",
     page_icon="🩻",
     layout="wide"
 )
 
-# =========================
-# CUSTOM CSS
-# =========================
+# ==================================
+# CSS
+# ==================================
 st.markdown("""
 <style>
-.stApp {
+
+.stApp{
     background: linear-gradient(135deg,#0f172a,#1e293b,#334155);
-    color:white;
 }
 
 .main-title{
     text-align:center;
+    color:white;
     font-size:42px;
     font-weight:bold;
-    color:white;
 }
 
 .sub-title{
     text-align:center;
     color:#cbd5e1;
     font-size:18px;
-    margin-bottom:30px;
+    margin-bottom:25px;
 }
 
-.result-box{
-    padding:20px;
-    border-radius:15px;
+.result-card{
     background:#1e293b;
-    box-shadow:0px 0px 15px rgba(0,0,0,0.3);
-}
-
-.prediction{
-    font-size:26px;
-    font-weight:bold;
-    color:#38bdf8;
+    padding:25px;
+    border-radius:15px;
+    box-shadow:0 0 15px rgba(0,0,0,0.3);
 }
 
 .footer{
@@ -58,65 +52,122 @@ st.markdown("""
     color:#94a3b8;
     margin-top:50px;
 }
+
 </style>
 """, unsafe_allow_html=True)
 
-# =========================
-# DOWNLOAD MODEL
-# =========================
-MODEL_PATH = "my_image_classifier_model.h5"
+# ==================================
+# DOWNLOAD MODEL DARI DRIVE
+# ==================================
+MODEL_PATH = "model.h5"
 
 if not os.path.exists(MODEL_PATH):
-    file_id = "1GIM10m53KGe8pZHlPA7_gC9iMNgsJFjd"
-    url = f"https://drive.google.com/uc?id={file_id}"
-    gdown.download(url, MODEL_PATH, quiet=False)
 
-# =========================
+    file_id = "1DEgQPFAyr-iUYbRDvbOm6e4Sm2vGR0lD"
+
+    url = f"https://drive.google.com/uc?id={file_id}"
+
+    with st.spinner("Mengunduh model dari Google Drive..."):
+        gdown.download(
+            url,
+            MODEL_PATH,
+            quiet=False
+        )
+
+# ==================================
 # LOAD MODEL
-# =========================
+# ==================================
 @st.cache_resource
 def load_model():
     return tf.keras.models.load_model(MODEL_PATH)
 
 model = load_model()
 
-# =========================
-# CLASS NAMES
-# =========================
+# ==================================
+# CLASS
+# ==================================
 class_names = [
     "Covid",
     "Normal",
     "Viral Pneumonia"
 ]
 
-# =========================
+# ==================================
+# PREPROCESS
+# ==================================
+def predict_image(image):
+
+    image = image.convert("RGB")
+
+    image = image.resize((224,224))
+
+    img_array = np.array(image)
+
+    img_array = img_array.astype(np.float32)
+
+    img_array = img_array / 255.0
+
+    img_array = np.expand_dims(
+        img_array,
+        axis=0
+    )
+
+    prediction = model.predict(
+        img_array,
+        verbose=0
+    )
+
+    probs = tf.nn.softmax(
+        prediction[0]
+    ).numpy()
+
+    predicted_class = np.argmax(probs)
+
+    confidence = probs[predicted_class] * 100
+
+    return (
+        class_names[predicted_class],
+        confidence,
+        probs
+    )
+
+# ==================================
 # HEADER
-# =========================
+# ==================================
 st.markdown(
-    "<div class='main-title'>🩻 Deteksi Penyakit Paru-Paru dari X-Ray</div>",
+    """
+    <div class="main-title">
+    🩻 Deteksi Covid dari X-Ray
+    </div>
+    """,
     unsafe_allow_html=True
 )
 
 st.markdown(
-    "<div class='sub-title'>Klasifikasi Covid, Normal, dan Viral Pneumonia menggunakan Deep Learning</div>",
+    """
+    <div class="sub-title">
+    Klasifikasi Covid, Normal, dan Viral Pneumonia menggunakan Deep Learning
+    </div>
+    """,
     unsafe_allow_html=True
 )
 
-# =========================
+# ==================================
 # UPLOAD
-# =========================
+# ==================================
 uploaded_file = st.file_uploader(
-    "📤 Upload Gambar X-Ray",
-    type=["jpg", "jpeg", "png"]
+    "Upload Gambar X-Ray",
+    type=["jpg","jpeg","png"]
 )
 
 if uploaded_file:
 
-    image = Image.open(uploaded_file).convert("RGB")
+    image = Image.open(uploaded_file)
 
     col1, col2 = st.columns([1,1])
 
     with col1:
+
         st.image(
             image,
             caption="Gambar X-Ray",
@@ -125,53 +176,72 @@ if uploaded_file:
 
     with col2:
 
-        img = image.resize((224,224))
+        label, confidence, probs = predict_image(image)
 
-        img_array = np.array(img)
-        img_array = img_array.astype(np.float32)
-        img_array = img_array / 255.0
-        img_array = np.expand_dims(img_array, axis=0)
-
-        prediction = model.predict(img_array)
-
-        probs = tf.nn.softmax(prediction[0]).numpy()
-
-        predicted_class = np.argmax(probs)
-
-        label = class_names[predicted_class]
-
-        confidence = probs[predicted_class] * 100
-
-        st.markdown("<div class='result-box'>", unsafe_allow_html=True)
+        st.markdown(
+            '<div class="result-card">',
+            unsafe_allow_html=True
+        )
 
         st.markdown("## 📊 Hasil Analisis")
 
         if label == "Covid":
-            st.error(f"🔴 Prediksi: {label}")
+            st.error(
+                f"🔴 Prediksi: {label}"
+            )
 
         elif label == "Normal":
-            st.success(f"🟢 Prediksi: {label}")
+            st.success(
+                f"🟢 Prediksi: {label}"
+            )
 
         else:
-            st.warning(f"🟡 Prediksi: {label}")
+            st.warning(
+                f"🟡 Prediksi: {label}"
+            )
 
         st.markdown(
-            f"<div class='prediction'>Confidence: {confidence:.2f}%</div>",
+            f"## Confidence: {confidence:.2f}%"
+        )
+
+        st.progress(
+            float(confidence / 100)
+        )
+
+        if confidence >= 80:
+            st.success(
+                "Model sangat yakin terhadap prediksi."
+            )
+
+        elif confidence >= 60:
+            st.info(
+                "Model cukup yakin terhadap prediksi."
+            )
+
+        else:
+            st.warning(
+                "Tingkat keyakinan model masih rendah."
+            )
+
+        st.markdown(
+            "</div>",
             unsafe_allow_html=True
         )
 
-        st.progress(float(confidence/100))
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        # =====================
-        # TABLE
-        # =====================
-        st.markdown("### 📋 Probabilitas Semua Kelas")
+        # ==========================
+        # TABEL
+        # ==========================
+        st.markdown(
+            "### 📋 Probabilitas Semua Kelas"
+        )
 
         df = pd.DataFrame({
             "Kelas": class_names,
-            "Probabilitas (%)": np.round(probs * 100, 2)
+            "Probabilitas (%)":
+            np.round(
+                probs * 100,
+                2
+            )
         })
 
         st.dataframe(
@@ -179,9 +249,9 @@ if uploaded_file:
             use_container_width=True
         )
 
-        # =====================
+        # ==========================
         # CHART
-        # =====================
+        # ==========================
         fig = px.bar(
             df,
             x="Kelas",
@@ -195,13 +265,13 @@ if uploaded_file:
             use_container_width=True
         )
 
-# =========================
+# ==================================
 # FOOTER
-# =========================
+# ==================================
 st.markdown(
     """
-    <div class='footer'>
-    Sistem Deteksi Covid, Normal, dan Viral Pneumonia menggunakan CNN & Streamlit
+    <div class="footer">
+    Sistem Deteksi Covid, Normal, dan Viral Pneumonia menggunakan CNN dan Streamlit
     </div>
     """,
     unsafe_allow_html=True
